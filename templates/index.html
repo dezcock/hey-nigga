@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AeroHydro-Twin | Ultimate Master Suite</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <style>
+    html, body { background: #09090b; color: #f4f4f5; margin: 0; padding: 0; font-family: sans-serif; }
+    .map-box { height: 420px; width: 100%; border-radius: 0.5rem; background: #0f172a; }
+    .panel { background: #18181b; border: 1px solid #27272a; border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 1.25rem; }
+    .btn { cursor: pointer; transition: opacity .15s ease; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+  </style>
+</head>
+<body class="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
+
+  <header class="border-b border-zinc-800 pb-4 flex justify-between items-center flex-wrap gap-3">
+    <div>
+      <h1 class="text-xl font-bold text-zinc-50">AeroHydro-Twin <span class="text-sky-500">Master Suite</span></h1>
+      <p class="text-xs text-zinc-400">Pan-India Hydrodynamic Simulation, Boundary Drawing &amp; Multi-Satellite Command</p>
+    </div>
+    <div class="flex gap-2 text-xs flex-wrap">
+      <a href="/api/export/pdf-briefing" target="_blank" class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded font-medium">📄 Export PDF Briefing</a>
+      <button id="toggleDualViewBtn" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded font-medium">🖥️ Toggle Dual-District View</button>
+    </div>
+  </header>
+
+  <section id="commandBanner" class="bg-green-600 text-white rounded-lg p-4 shadow-lg transition-colors duration-300">
+    <div class="flex items-center justify-between">
+      <p class="text-xs uppercase font-bold opacity-80">Command Status &amp; Webhook Dispatcher</p>
+      <span id="webhookBadge" class="text-[10px] bg-black/30 px-2 py-0.5 rounded font-mono">Webhook: Listening</span>
+    </div>
+    <p id="bannerText" class="text-base font-semibold mt-1">System nominal. Ready for simulation.</p>
+    <p id="bannerMeta" class="text-xs mt-1 opacity-80"></p>
+  </section>
+
+  <!-- REGION SELECTOR -->
+  <section class="panel flex flex-wrap gap-4 items-center justify-between">
+    <div class="flex gap-3 items-center w-full sm:w-auto">
+      <label class="text-sm font-medium">Region/State:</label>
+      <input list="regions" id="districtSelect" value="Guwahati (Zoo Road Basin)" placeholder="Type any state or city..." class="bg-zinc-900 text-zinc-100 border border-zinc-700 rounded px-3 py-1.5 text-sm w-72">
+      <datalist id="regions">
+        <option value="Guwahati (Zoo Road Basin)">
+        <option value="Chennai (Adyar Basin)">
+        <option value="Mumbai (Mithi River Sector)">
+        <option value="Delhi (Yamuna Basin)">
+        <option value="Kolkata (Hooghly Delta)">
+        <option value="Srinagar (Jhelum Basin)">
+        <option value="Bengaluru (Bellandur Catchment)">
+        <option value="Hyderabad (Hussain Sagar Basin)">
+        <option value="Madurai (Vaigai Basin)">
+        <option value="Pune (Mula-Mutha Basin)">
+      </datalist>
+      <button id="loadDistrictBtn" class="btn bg-sky-600 hover:bg-sky-500 text-white text-xs px-3 py-2 rounded">Load Sector</button>
+    </div>
+    <div class="text-xs text-sky-400 bg-sky-950/40 border border-sky-800/60 px-3 py-1.5 rounded-md">
+      ✏️ <b>Tip:</b> Select a region or draw a custom boundary box on the satellite map.
+    </div>
+  </section>
+
+  <!-- HISTORICAL REPLAY TIMELINE SCRUBBER -->
+  <section class="panel border-amber-500/50 bg-amber-950/20">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <div>
+        <h2 class="text-base font-semibold text-amber-400">⏳ Historical Flood Disaster Timeline Replay</h2>
+        <p class="text-xs text-zinc-400">Scrub through archived satellite passes from major historical Indian floods.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <select id="histEventSelect" class="bg-zinc-900 text-amber-300 border border-amber-700/60 rounded px-3 py-1.5 text-xs">
+          <option value="chennai_2015">Chennai 2015 (Adyar River Breach)</option>
+          <option value="assam_2022">Assam 2022 (Brahmaputra Flood)</option>
+          <option value="mumbai_2005">Mumbai 2005 (Mithi Deluge)</option>
+          <option value="kerala_2018">Kerala 2018 (Idukki Release)</option>
+        </select>
+        <button id="loadHistBtn" class="btn bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded">Load Archive</button>
+      </div>
+    </div>
+    <div class="flex items-center gap-4 bg-zinc-950 p-3 rounded border border-zinc-800">
+      <span class="text-xs font-mono text-amber-400 w-16">Tick: <span id="tickVal">0</span>/12</span>
+      <input id="histScrubber" type="range" min="0" max="12" value="0" step="1" class="flex-1 accent-amber-500 cursor-pointer">
+      <button id="playHistBtn" class="btn bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-xs px-3 py-1 rounded border border-zinc-700">▶ Replay Step</button>
+    </div>
+  </section>
+
+  <!-- UNIFIED MULTI-MODAL EVENT INGESTION HUB -->
+  <section class="panel border-sky-500/50 bg-sky-950/20">
+    <h2 class="text-base font-semibold text-sky-400 mb-1">⚡ Unified Multi-Modal Event Ingestion Hub</h2>
+    <p class="text-xs text-zinc-400 mb-4">Simultaneously process precipitation, acoustic sensors, CCTV footage, and Sentinel SAR radar streams.</p>
+    
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+      <div>
+        <label class="block text-xs text-zinc-300 mb-1">Rainfall (mm/hr)</label>
+        <input id="uniRainfall" type="number" value="120" class="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-sm text-white">
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-300 mb-1">Acoustic Audio (.wav)</label>
+        <input id="uniAudio" type="file" accept=".wav" class="w-full text-xs text-zinc-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-700 file:text-white">
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-300 mb-1">CCTV Footage (.mp4/img)</label>
+        <input id="uniCctv" type="file" accept="image/*,video/*" class="w-full text-xs text-zinc-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-700 file:text-white">
+      </div>
+      <div class="flex items-end">
+        <button id="runUnifiedBtn" class="btn w-full bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-medium text-xs py-2 rounded shadow">
+          🚀 Run Unified Simulation
+        </button>
+      </div>
+    </div>
+    <div id="unifiedResult" class="bg-zinc-950 p-3 rounded text-xs font-mono text-zinc-300 border border-zinc-800">
+      Unified status: Ready for multi-modal ingestion.
+    </div>
+  </section>
+
+  <!-- MAIN GRID -->
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+    <section class="panel xl:col-span-2 space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-base font-semibold">Sector Alpha Hydrodynamics</h2>
+        <span id="simClock" class="text-xs text-sky-400 font-mono font-bold">Sim Clock: --:--</span>
+      </div>
+
+      <div class="flex gap-3 items-end">
+        <div class="flex-1">
+          <label class="block text-xs mb-1">Rainfall (mm/hr)</label>
+          <input id="rainfallInput" type="number" value="120" class="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm text-white">
+        </div>
+        <button id="stepBtn" class="btn bg-sky-600 hover:bg-sky-500 text-white text-xs px-4 py-2.5 rounded">Execute Tick</button>
+        <button id="resetBtn" class="btn bg-zinc-700 hover:bg-zinc-600 text-zinc-100 text-xs px-4 py-2.5 rounded">Reset</button>
+      </div>
+
+      <!-- AUTONOMOUS PREDICTOR ENGINE BAR -->
+      <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-3.5">
+        <h3 class="text-xs font-semibold text-zinc-200 mb-2">⚡ Autonomous Simulation Engine</h3>
+        <div class="flex flex-wrap gap-2.5 items-center mb-3">
+          <label class="text-xs text-zinc-400">Step Cycle (sec):</label>
+          <input id="autoInterval" type="number" value="1.5" step="0.5" min="0.5" max="60" class="bg-zinc-950 text-zinc-100 px-2.5 py-1 text-xs rounded border border-zinc-700 w-16 text-center">
+          <button id="startAutoBtn" class="btn bg-green-600 hover:bg-green-500 text-white text-xs font-medium rounded px-3 py-1.5">▶ Engage Auto-Predictor</button>
+          <button id="stopAutoBtn" disabled class="btn bg-red-600/30 text-zinc-400 text-xs font-medium rounded px-3 py-1.5 cursor-not-allowed">⏹ Disengage</button>
+        </div>
+        <div id="simLogContainer" class="bg-zinc-950 p-2.5 rounded h-24 overflow-y-auto font-mono text-xs text-zinc-400 border border-zinc-800 space-y-1">
+          <div class="text-zinc-600 italic">[Micro-Grid Engine Online]</div>
+        </div>
+      </div>
+
+      <!-- WARD FORECAST TABLE -->
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+        <h3 class="text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-2">Sub-Sector Inundation Forecasts</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-zinc-500 border-b border-zinc-800">
+                <th class="pb-2">Sub-Sector Zone</th>
+                <th class="pb-2">Est. Inundation</th>
+                <th class="pb-2">Threat Vector</th>
+                <th class="pb-2">Peak Hydro-Time</th>
+              </tr>
+            </thead>
+            <tbody id="wardTableBody" class="font-mono divide-y divide-zinc-800/50">
+              <tr><td colspan="4" class="py-2 text-zinc-500 italic text-center">Awaiting telemetry simulation...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="gridMap1" class="map-box"></div>
+    </section>
+
+    <!-- RIGHT COLUMN -->
+    <div class="space-y-5">
+      <section class="panel bg-sky-950/10 border-sky-500/40">
+        <h2 class="text-sm font-semibold text-sky-400 mb-2">🛰️ Multi-Satellite Constellation Fusion</h2>
+        <div class="flex items-center justify-between bg-zinc-900 p-2.5 rounded">
+          <span class="text-xs text-zinc-300">Constellation Status</span>
+          <button id="toggleSatBtn" class="btn bg-green-600 text-white text-xs px-3 py-1 rounded">Active</button>
+        </div>
+      </section>
+
+      <!-- INDIVIDUAL AUDIO ANALYZER -->
+      <section class="panel">
+        <h2 class="text-sm font-semibold text-zinc-100 mb-1">Culvert Hydro-Acoustics</h2>
+        <input id="audioFile" type="file" accept=".wav" class="w-full text-xs text-zinc-300 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-700 file:text-white mb-2">
+        <button id="audioBtn" class="btn w-full bg-zinc-800 hover:bg-zinc-700 text-xs text-sky-400 py-1.5 rounded">Analyze Audio Only</button>
+        <div id="audioResult" class="mt-2 bg-zinc-900 p-2 rounded text-xs text-zinc-300 font-mono">No audio analyzed.</div>
+      </section>
+
+      <!-- INDIVIDUAL CCTV ANALYZER -->
+      <section class="panel">
+        <h2 class="text-sm font-semibold text-zinc-100 mb-1">Optical Flow Velocity</h2>
+        <input id="cctvFile" type="file" accept="image/*,video/*" class="w-full text-xs text-zinc-300 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-700 file:text-white mb-2">
+        <button id="cctvBtn" class="btn w-full bg-zinc-800 hover:bg-zinc-700 text-xs text-sky-400 py-1.5 rounded">Analyze CCTV Only</button>
+        <div id="cctvResult" class="mt-2 bg-zinc-900 p-2 rounded text-xs text-zinc-300 font-mono">No video analyzed.</div>
+      </section>
+
+      <!-- SECONDARY MAP PANEL (DUAL VIEW) -->
+      <section id="secondaryPanel" class="panel border-purple-500/40 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-semibold text-purple-400">Sector Bravo (Secondary)</h3>
+          <span id="simClock2" class="text-xs font-mono text-zinc-400">Clock: --:--</span>
+        </div>
+        <input list="regions" id="districtSelect2" value="Chennai (Adyar Basin)" class="bg-zinc-900 text-zinc-100 border border-zinc-700 rounded px-2.5 py-1 text-xs w-full mb-2">
+        <button id="loadDistrictBtn2" class="btn bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1 rounded mb-2">Load Bravo Sector</button>
+        <button id="stepBtn2" class="btn bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1 rounded mb-2 ml-1">Tick Bravo</button>
+        <div id="gridMap2" class="map-box" style="height: 250px;"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const API = "http://127.0.0.1:5000";
+      let autoSimTimer = null;
+      let multiSatActive = true;
+      let dualViewActive = false;
+
+      const map1 = L.map("gridMap1", { center: [26.16, 91.76], zoom: 13, layers: [L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')] });
+      const map2 = L.map("gridMap2", { center: [13.02, 80.22], zoom: 13, layers: [L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')] });
+
+      const drawnItems = new L.FeatureGroup();
+      map1.addLayer(drawnItems);
+      map1.addControl(new L.Control.Draw({ edit: { featureGroup: drawnItems }, draw: { polygon: false, polyline: false, circle: false, marker: false, circlemarker: false, rectangle: true } }));
+
+      map1.on(L.Draw.Event.CREATED, async function (e) {
+        drawnItems.clearLayers();
+        drawnItems.addLayer(e.layer);
+        const b = e.layer.getBounds();
+        const res = await fetch(API + "/api/simulation/set-boundary", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sw_lat: b.getSouthWest().lat, sw_lon: b.getSouthWest().lng, ne_lat: b.getNorthEast().lat, ne_lon: b.getNorthEast().lng, target: "primary" })
+        });
+        const data = await res.json();
+        overlay1 = renderGrid(map1, overlay1, c1, ctx1, data.water_grid, data.bounds);
+        updateWardTable(data.ward_predictions);
+      });
+
+      let overlay1 = null, overlay2 = null;
+      const c1 = document.createElement("canvas"), c2 = document.createElement("canvas");
+      const ctx1 = c1.getContext("2d"), ctx2 = c2.getContext("2d");
+
+      function renderGrid(mapObj, currentOverlay, canvasObj, ctxObj, grid, bounds) {
+        const rows = grid.length, cols = grid[0].length;
+        canvasObj.width = cols; canvasObj.height = rows;
+        const img = ctxObj.createImageData(cols, rows);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const d = Number(grid[r][c]) || 0;
+            const idx = (r * cols + c) * 4;
+            if (d < 0.05) { img.data[idx+3] = 0; }
+            else if (d < 0.3) { img.data[idx]=14; img.data[idx+1]=165; img.data[idx+2]=233; img.data[idx+3]=180; }
+            else { img.data[idx]=220; img.data[idx+1]=38; img.data[idx+2]=38; img.data[idx+3]=250; }
+          }
+        }
+        ctxObj.putImageData(img, 0, 0);
+        if (currentOverlay) mapObj.removeLayer(currentOverlay);
+        const newOverlay = L.imageOverlay(canvasObj.toDataURL(), bounds, { opacity: 0.85 }).addTo(mapObj);
+        mapObj.fitBounds(bounds);
+        return newOverlay;
+      }
+
+      function updateWardTable(wards) {
+        const tbody = document.getElementById("wardTableBody");
+        if (!wards || !wards.length) return;
+        tbody.innerHTML = "";
+        wards.forEach(w => {
+          const tr = document.createElement("tr");
+          let riskColor = w.risk === "CRITICAL" ? "text-red-400 font-bold" : (w.risk === "MODERATE" ? "text-yellow-400" : "text-green-400");
+          tr.innerHTML = `<td class="py-1.5 text-zinc-200">${w.ward}</td><td class="py-1.5 text-zinc-300">${w.max_depth_m}m</td><td class="py-1.5 ${riskColor}">${w.risk}</td><td class="py-1.5 text-sky-300 font-bold">${w.estimated_peak_time}</td>`;
+          tbody.appendChild(tr);
+        });
+      }
+
+      function appendLog(msg, color = "text-zinc-400") {
+        const container = document.getElementById("simLogContainer");
+        const div = document.createElement("div");
+        div.className = color;
+        div.textContent = msg;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+      }
+
+      document.getElementById("loadDistrictBtn").addEventListener("click", async () => {
+        if (autoSimTimer) stopAutoSim();
+        drawnItems.clearLayers();
+        const res = await fetch(API + "/api/simulation/set-district", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ district: document.getElementById("districtSelect").value, target: "primary" })
+        });
+        const data = await res.json();
+        overlay1 = renderGrid(map1, overlay1, c1, ctx1, data.water_grid, data.bounds);
+        updateWardTable(data.ward_predictions);
+      });
+
+      async function executeSimStep(isAuto = false) {
+        const rain = parseFloat(document.getElementById("rainfallInput").value) || 120;
+        try {
+          const res = await fetch(API + "/api/simulation/step", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rainfall_mm: rain, target: "primary" })
+          });
+          const data = await res.json();
+          overlay1 = renderGrid(map1, overlay1, c1, ctx1, data.water_grid, data.bounds);
+          updateWardTable(data.ward_predictions);
+          document.getElementById("simClock").textContent = `Sim Clock: ${data.simulation_time.split(" ")[1]}`;
+          
+          const banner = document.getElementById("commandBanner");
+          banner.className = data.status === "RED" ? "bg-red-600 animate-pulse text-white rounded-lg p-4 shadow-lg font-bold" : "bg-green-600 text-white rounded-lg p-4 shadow-lg";
+          document.getElementById("bannerText").textContent = data.action_command;
+          
+          appendLog(`[${data.simulation_time.split(" ")[1]}] Max Depth: ${data.max_depth_m}m | Critical Cells: ${data.critical_cell_count}`, data.status === "RED" ? "text-red-400 font-bold" : "text-zinc-300");
+        } catch (err) {
+          if (isAuto) stopAutoSim();
+        }
+      }
+
+      document.getElementById("stepBtn").addEventListener("click", () => executeSimStep(false));
+
+      document.getElementById("resetBtn").addEventListener("click", async () => {
+        if (autoSimTimer) stopAutoSim();
+        drawnItems.clearLayers();
+        const res = await fetch(API + "/api/simulation/reset", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ district: document.getElementById("districtSelect").value, target: "primary" })
+        });
+        const data = await res.json();
+        overlay1 = renderGrid(map1, overlay1, c1, ctx1, data.water_grid, data.bounds);
+        document.getElementById("simClock").textContent = "Sim Clock: --:--";
+      });
+
+      // Unified Ingestion Hub
+      document.getElementById("runUnifiedBtn").addEventListener("click", async () => {
+        document.getElementById("runUnifiedBtn").disabled = true;
+        document.getElementById("unifiedResult").textContent = "Processing multi-modal sensor fusion…";
+        const form = new FormData();
+        form.append("rainfall_mm", document.getElementById("uniRainfall").value);
+        if (document.getElementById("uniAudio").files[0]) form.append("audio", document.getElementById("uniAudio").files[0]);
+        if (document.getElementById("uniCctv").files[0]) form.append("cctv", document.getElementById("uniCctv").files[0]);
+
+        try {
+          const res = await fetch(API + "/api/unified/analyze-event", { method: "POST", body: form });
+          const data = await res.json();
+          overlay1 = renderGrid(map1, overlay1, c1, ctx1, data.simulation.water_grid, data.simulation.bounds);
+          updateWardTable(data.simulation.ward_predictions);
+          document.getElementById("unifiedResult").innerHTML = `<b>[Unified Fusion Success]</b><br>• Audio: ${data.audio_analysis.classification}<br>• CCTV Velocity: ${data.cctv_analysis.estimated_velocity_ms} m/s<br>• Max Depth: ${data.simulation.max_depth_m}m`;
+        } catch (err) {
+          document.getElementById("unifiedResult").textContent = "Error: " + err.message;
+        } finally {
+          document.getElementById("runUnifiedBtn").disabled = false;
+        }
+      });
+
+      document.getElementById("audioBtn").addEventListener("click", async () => {
+        const f = document.getElementById("audioFile").files[0];
+        if (!f) { document.getElementById("audioResult").textContent = "Select .wav first."; return; }
+        const form = new FormData(); form.append("audio", f);
+        const res = await fetch(API + "/api/audio/analyze", { method: "POST", body: form });
+        const data = await res.json();
+        document.getElementById("audioResult").textContent = `Class: ${data.classification} | Freq: ${data.dominant_frequency_hz}Hz`;
+      });
+
+      document.getElementById("cctvBtn").addEventListener("click", async () => {
+        const f = document.getElementById("cctvFile").files[0];
+        if (!f) { document.getElementById("cctvResult").textContent = "Select video/image first."; return; }
+        const form = new FormData(); form.append("cctv", f);
+        const res = await fetch(API + "/api/cctv/analyze", { method: "POST", body: form });
+        const data = await res.json();
+        document.getElementById("cctvResult").textContent = `Velocity: ${data.estimated_velocity_ms} m/s | Hazard: ${data.hazard_level}`;
+      });
+
+      // Autonomous Predictor
+      function startAutoSim() {
+        if (autoSimTimer) return;
+        document.getElementById("startAutoBtn").disabled = true;
+        document.getElementById("startAutoBtn").classList.add("opacity-40");
+        document.getElementById("stopAutoBtn").disabled = false;
+        document.getElementById("stopAutoBtn").classList.remove("bg-red-600/30", "text-zinc-400", "cursor-not-allowed");
+        document.getElementById("stopAutoBtn").classList.add("bg-red-600", "text-white", "cursor-pointer");
+
+        executeSimStep(true);
+        const interval = parseFloat(document.getElementById("autoInterval").value) || 1.5;
+        autoSimTimer = setInterval(() => executeSimStep(true), interval * 1000);
+      }
+
+      function stopAutoSim() {
+        if (autoSimTimer) { clearInterval(autoSimTimer); autoSimTimer = null; }
+        document.getElementById("startAutoBtn").disabled = false;
+        document.getElementById("startAutoBtn").classList.remove("opacity-40");
+        document.getElementById("stopAutoBtn").disabled = true;
+        document.getElementById("stopAutoBtn").classList.remove("bg-red-600", "text-white", "cursor-pointer");
+        document.getElementById("stopAutoBtn").classList.add("bg-red-600/30", "text-zinc-400", "cursor-not-allowed");
+      }
+
+      document.getElementById("startAutoBtn").addEventListener("click", startAutoSim);
+      document.getElementById("stopAutoBtn").addEventListener("click", stopAutoSim);
+
+      // Dual View Toggle
+      document.getElementById("toggleDualViewBtn").addEventListener("click", () => {
+        dualViewActive = !dualViewActive;
+        document.getElementById("secondaryPanel").classList.toggle("hidden", !dualViewActive);
+        document.getElementById("toggleDualViewBtn").textContent = dualViewActive ? "🖥️ Hide Dual-District View" : "🖥️ Toggle Dual-District View";
+        if (dualViewActive) setTimeout(() => map2.invalidateSize(), 200);
+      });
+
+      document.getElementById("loadDistrictBtn2").addEventListener("click", async () => {
+        const res = await fetch(API + "/api/simulation/set-district", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ district: document.getElementById("districtSelect2").value, target: "secondary" })
+        });
+        const data = await res.json();
+        overlay2 = renderGrid(map2, overlay2, c2, ctx2, data.water_grid, data.bounds);
+        document.getElementById("simClock2").textContent = `Clock: ${data.simulation_time.split(" ")[1]}`;
+      });
+
+      document.getElementById("stepBtn2").addEventListener("click", async () => {
+        const res = await fetch(API + "/api/simulation/step", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rainfall_mm: 120, target: "secondary" })
+        });
+        const data = await res.json();
+        overlay2 = renderGrid(map2, overlay2, c2, ctx2, data.water_grid, data.bounds);
+        document.getElementById("simClock2").textContent = `Clock: ${data.simulation_time.split(" ")[1]}`;
+      });
+
+      // Historical Replay Scrubber
+      async function updateHistoricalReplay() {
+        if (autoSimTimer) stopAutoSim();
+        const eventKey = document.getElementById("histEventSelect").value;
+        const tick = document.getElementById("histScrubber").value;
+        document.getElementById("tickVal").textContent = tick;
+
+        const res = await fetch(API + "/api/historical/load-frame", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event_key: eventKey, tick_index: tick })
+        });
+        const data = await res.json();
+        overlay1 = renderGrid(map1, overlay1, c1, ctx1, data.water_grid, data.bounds);
+        document.getElementById("bannerText").textContent = `ARCHIVE REPLAY: ${data.event_name} [Tick ${data.current_tick}/${data.max_ticks}]`;
+        document.getElementById("simClock").textContent = `Sim Clock: Day ${tick} Replay`;
+      }
+
+      document.getElementById("histScrubber").addEventListener("input", updateHistoricalReplay);
+      document.getElementById("loadHistBtn").addEventListener("click", updateHistoricalReplay);
+      document.getElementById("playHistBtn").addEventListener("click", () => {
+        const scr = document.getElementById("histScrubber");
+        scr.value = (parseInt(scr.value) + 1) % 13;
+        updateHistoricalReplay();
+      });
+
+      map1.fitBounds([[26.12, 91.70], [26.20, 91.82]]);
+    })();
+  </script>
+</body>
+</html>
